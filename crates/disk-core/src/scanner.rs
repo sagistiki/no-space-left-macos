@@ -6,17 +6,11 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 /// Options controlling a scan.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ScanOptions {
-    /// If false, the scan stays on the same filesystem as the root and does not
-    /// descend into mounted volumes (compared via device id).
+    /// If false (the default), the scan stays on the same filesystem as the
+    /// root and does not descend into mounted volumes (compared via device id).
     pub cross_device: bool,
-}
-
-impl Default for ScanOptions {
-    fn default() -> Self {
-        Self { cross_device: false }
-    }
 }
 
 /// The result of a scan: the sized tree plus any paths that could not be read.
@@ -104,7 +98,7 @@ fn build_node(
     }
 
     // Largest first, so rankings and the treemap read top-down.
-    children.sort_by(|a, b| b.size.cmp(&a.size));
+    children.sort_by_key(|child| std::cmp::Reverse(child.size));
 
     Node {
         name,

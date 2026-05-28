@@ -7,6 +7,7 @@
 //! exposed here, which keeps all logic independently unit-testable.
 
 pub mod delete;
+pub mod diff;
 pub mod model;
 pub mod scanner;
 pub mod snapshot;
