@@ -166,12 +166,19 @@ pub fn show(
     }
 
     let painter = ui.painter_at(area);
-    let weights: Vec<f64> = node.children[..count].iter().map(|c| c.size as f64).collect();
+    let weights: Vec<f64> = node.children[..count]
+        .iter()
+        .map(|c| c.size as f64)
+        .collect();
     let tiles = squarify(&weights, area);
 
     for tile in &tiles {
         let child = &node.children[tile.index];
-        let resp = ui.interact(tile.rect, ui.id().with(("tile", tile.index)), Sense::click());
+        let resp = ui.interact(
+            tile.rect,
+            ui.id().with(("tile", tile.index)),
+            Sense::click(),
+        );
 
         let base = match tile_colors {
             Some(colors) => colors
@@ -180,34 +187,30 @@ pub fn show(
                 .unwrap_or_else(|| tile_color(tile.index)),
             None => tile_color(tile.index),
         };
-        let fill = if resp.hovered() {
-            base.linear_multiply(1.22)
-        } else {
-            base
-        };
-        let r = tile.rect.shrink(1.5);
-        painter.rect_filled(r, 5.0, fill);
+        let r = tile.rect.shrink(2.0);
+        painter.rect_filled(r, 7.0, base);
         if Some(tile.index) == selected {
-            painter.rect_stroke(r, 5.0, Stroke::new(2.5, theme::ACCENT));
+            painter.rect_stroke(r, 7.0, Stroke::new(2.5, theme::ACCENT_DEEP));
+        } else if resp.hovered() {
+            painter.rect_stroke(r, 7.0, Stroke::new(1.5, theme::ACCENT));
         }
 
         // Labels only when the tile is roomy enough to read.
         if r.width() > 56.0 && r.height() > 26.0 {
-            let tc = contrast_color(fill);
             painter.text(
-                r.left_top() + vec2(8.0, 6.0),
+                r.left_top() + vec2(9.0, 7.0),
                 Align2::LEFT_TOP,
                 &child.name,
                 FontId::proportional(12.5),
-                tc,
+                theme::TILE_TEXT,
             );
             if r.height() > 46.0 {
                 painter.text(
-                    r.left_top() + vec2(8.0, 24.0),
+                    r.left_top() + vec2(9.0, 25.0),
                     Align2::LEFT_TOP,
                     crate::format::human_size(child.size),
                     FontId::proportional(11.0),
-                    tc.gamma_multiply(0.85),
+                    theme::TILE_TEXT.gamma_multiply(0.7),
                 );
             }
         }
@@ -222,28 +225,9 @@ pub fn show(
     action
 }
 
-/// A soft, Apple-ish palette cycled by tile position.
+/// The pastel palette, cycled by tile position.
 fn tile_color(index: usize) -> Color32 {
-    const PALETTE: [Color32; 6] = [
-        Color32::from_rgb(10, 132, 255),
-        Color32::from_rgb(48, 209, 88),
-        Color32::from_rgb(255, 159, 10),
-        Color32::from_rgb(191, 90, 242),
-        Color32::from_rgb(255, 105, 97),
-        Color32::from_rgb(94, 200, 230),
-    ];
-    PALETTE[index % PALETTE.len()]
-}
-
-/// Pick black or white text for legibility over `bg`.
-fn contrast_color(bg: Color32) -> Color32 {
-    let [r, g, b, _] = bg.to_array();
-    let luma = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
-    if luma > 140.0 {
-        Color32::from_rgb(20, 20, 20)
-    } else {
-        Color32::WHITE
-    }
+    theme::TILES[index % theme::TILES.len()]
 }
 
 #[cfg(test)]
@@ -293,7 +277,10 @@ mod tests {
             .iter()
             .map(|t| (t.rect.width() * t.rect.height()) as f64)
             .sum();
-        assert!((total - 9600.0).abs() < 5.0, "tiles should fill area; got {total}");
+        assert!(
+            (total - 9600.0).abs() < 5.0,
+            "tiles should fill area; got {total}"
+        );
     }
 
     #[test]

@@ -147,7 +147,9 @@ mod tests {
         );
         assert_eq!(
             check_deletable(Path::new("/usr/bin/ssh"), &r),
-            Err(GuardError::ProtectedSystemPath(PathBuf::from("/usr/bin/ssh")))
+            Err(GuardError::ProtectedSystemPath(PathBuf::from(
+                "/usr/bin/ssh"
+            )))
         );
     }
 

@@ -98,10 +98,7 @@ mod tests {
 
     #[test]
     fn remove_descendant_nested_adjusts_all_ancestors() {
-        let mut root = dir(
-            "root",
-            vec![file("a", 10), dir("sub", vec![file("b", 20)])],
-        );
+        let mut root = dir("root", vec![file("a", 10), dir("sub", vec![file("b", 20)])]);
 
         let removed = root.remove_descendant(&[1], 0);
 

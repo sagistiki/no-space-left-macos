@@ -248,10 +248,10 @@ fn walk_names(outcome: &ScanOutcome, nav: &[usize], mut push: impl FnMut(&str)) 
 
 fn compare_color(change: Option<Change>) -> Color32 {
     match change {
-        Some(Change::New) => Color32::from_rgb(48, 209, 88),
-        Some(Change::Grew) => Color32::from_rgb(255, 159, 10),
-        Some(Change::Shrank) => Color32::from_rgb(94, 200, 230),
-        _ => Color32::from_gray(150),
+        Some(Change::New) => Color32::from_rgb(0xBC, 0xE6, 0xC8), // pastel green
+        Some(Change::Grew) => Color32::from_rgb(0xFF, 0xD9, 0xB0), // pastel amber
+        Some(Change::Shrank) => Color32::from_rgb(0xC2, 0xD5, 0xF2), // pastel blue
+        _ => Color32::from_rgb(0xE4, 0xE8, 0xEE),                 // pale gray
     }
 }
 
@@ -305,7 +305,7 @@ impl eframe::App for OrganizerApp {
                     ui.add_space(12.0);
                     ui.heading("Disk Space Organizer");
                     ui.add_space(4.0);
-                    if !self.nav.is_empty() && ui.button("⟵ Up").clicked() {
+                    if !self.nav.is_empty() && ui.button("↑ Up").clicked() {
                         nav_to = Some(self.nav.len() - 1);
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -386,11 +386,11 @@ impl eframe::App for OrganizerApp {
                     ui.add_space(12.0);
                     ui.strong(format!("Comparing with snapshot from {}", cs.label));
                     ui.colored_label(
-                        Color32::from_rgb(48, 209, 88),
+                        crate::theme::ADDED,
                         format!("+{}", crate::format::human_size(cs.total_added)),
                     );
                     ui.colored_label(
-                        Color32::from_rgb(94, 200, 230),
+                        crate::theme::REMOVED,
                         format!("−{}", crate::format::human_size(cs.total_removed)),
                     );
                     if !cs.vanished.is_empty() {
@@ -405,14 +405,16 @@ impl eframe::App for OrganizerApp {
                 });
                 if !cs.vanished.is_empty() {
                     ui.collapsing("Vanished items", |ui| {
-                        egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
-                            for (path, size) in cs.vanished.iter().take(50) {
-                                ui.horizontal(|ui| {
-                                    ui.weak(crate::format::human_size(*size));
-                                    ui.label(path.display().to_string());
-                                });
-                            }
-                        });
+                        egui::ScrollArea::vertical()
+                            .max_height(160.0)
+                            .show(ui, |ui| {
+                                for (path, size) in cs.vanished.iter().take(50) {
+                                    ui.horizontal(|ui| {
+                                        ui.weak(crate::format::human_size(*size));
+                                        ui.label(path.display().to_string());
+                                    });
+                                }
+                            });
                     });
                 }
                 ui.add_space(4.0);
@@ -420,40 +422,44 @@ impl eframe::App for OrganizerApp {
         }
 
         let selected = self.selected;
-        egui::CentralPanel::default().show(ctx, |ui| match &self.state {
-            ScanState::Idle => {
-                ui.centered_and_justified(|ui| {
-                    ui.label("Press “Scan home folder” to see what’s taking up space.");
-                });
-            }
-            ScanState::Scanning => {
-                ui.centered_and_justified(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label("Scanning…");
+        egui::CentralPanel::default()
+            .frame(egui::Frame::central_panel(&ctx.style()).fill(crate::theme::BG))
+            .show(ctx, |ui| match &self.state {
+                ScanState::Idle => {
+                    ui.centered_and_justified(|ui| {
+                        ui.label("Press “Scan home folder” to see what’s taking up space.");
                     });
-                });
-            }
-            ScanState::Error(e) => {
-                ui.centered_and_justified(|ui| {
-                    ui.colored_label(egui::Color32::from_rgb(255, 69, 58), e.clone());
-                });
-            }
-            ScanState::Done(outcome) => {
-                let current = current_node(outcome, &self.nav);
-                let colors: Option<Vec<Color32>> = self.compare.as_ref().map(|cs| {
-                    let prefix = current_rel_path(outcome, &self.nav);
-                    current
-                        .children
-                        .iter()
-                        .map(|child| compare_color(cs.changes.get(&prefix.join(&child.name)).copied()))
-                        .collect()
-                });
-                let action = crate::treemap::show(ui, current, selected, colors.as_deref());
-                drill = action.drill;
-                select = action.selected;
-            }
-        });
+                }
+                ScanState::Scanning => {
+                    ui.centered_and_justified(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Scanning…");
+                        });
+                    });
+                }
+                ScanState::Error(e) => {
+                    ui.centered_and_justified(|ui| {
+                        ui.colored_label(crate::theme::DANGER, e.clone());
+                    });
+                }
+                ScanState::Done(outcome) => {
+                    let current = current_node(outcome, &self.nav);
+                    let colors: Option<Vec<Color32>> = self.compare.as_ref().map(|cs| {
+                        let prefix = current_rel_path(outcome, &self.nav);
+                        current
+                            .children
+                            .iter()
+                            .map(|child| {
+                                compare_color(cs.changes.get(&prefix.join(&child.name)).copied())
+                            })
+                            .collect()
+                    });
+                    let action = crate::treemap::show(ui, current, selected, colors.as_deref());
+                    drill = action.drill;
+                    select = action.selected;
+                }
+            });
 
         if let ScanState::Done(outcome) = &self.state {
             if let Some(sel) = self.selected {
@@ -494,7 +500,7 @@ impl eframe::App for OrganizerApp {
                                             egui::RichText::new("Move to Trash")
                                                 .color(egui::Color32::WHITE),
                                         )
-                                        .fill(egui::Color32::from_rgb(255, 59, 48));
+                                        .fill(crate::theme::DANGER);
                                         if ui.add(trash_btn).clicked() {
                                             set_pending = Some(PendingTrash {
                                                 path: child_path.clone(),
@@ -529,7 +535,7 @@ impl eframe::App for OrganizerApp {
                         let go = egui::Button::new(
                             egui::RichText::new("Move to Trash").color(egui::Color32::WHITE),
                         )
-                        .fill(egui::Color32::from_rgb(255, 59, 48));
+                        .fill(crate::theme::DANGER);
                         if ui.add(go).clicked() {
                             do_trash = true;
                         }
@@ -589,8 +595,10 @@ impl eframe::App for OrganizerApp {
         }
         if do_trash {
             if let Some(pending) = self.pending_trash.take() {
-                match disk_core::delete::move_to_trash(&pending.path, std::slice::from_ref(&self.root))
-                {
+                match disk_core::delete::move_to_trash(
+                    &pending.path,
+                    std::slice::from_ref(&self.root),
+                ) {
                     Ok(()) => {
                         if let ScanState::Done(outcome) = &mut self.state {
                             outcome.root.remove_descendant(&pending.nav, pending.index);

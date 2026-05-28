@@ -195,7 +195,10 @@ mod tests {
         assert_eq!(find(&result, "gone.txt").unwrap().change, Change::Vanished);
         assert_eq!(find(&result, "gone.txt").unwrap().old_size, 50);
         assert_eq!(find(&result, "fresh.txt").unwrap().change, Change::New);
-        assert!(find(&result, "steady.txt").is_none(), "unchanged is excluded");
+        assert!(
+            find(&result, "steady.txt").is_none(),
+            "unchanged is excluded"
+        );
     }
 
     #[test]
@@ -218,7 +221,10 @@ mod tests {
 
         let result = diff(&old, &new, 10);
 
-        assert!(find(&result, "a.txt").is_none(), "5-byte change below threshold");
+        assert!(
+            find(&result, "a.txt").is_none(),
+            "5-byte change below threshold"
+        );
         assert_eq!(find(&result, "b.txt").unwrap().change, Change::Grew);
     }
 
@@ -229,6 +235,9 @@ mod tests {
 
         let result = diff(&old, &new, 0);
 
-        assert_eq!(result.deltas.first().unwrap().path, PathBuf::from("huge.txt"));
+        assert_eq!(
+            result.deltas.first().unwrap().path,
+            PathBuf::from("huge.txt")
+        );
     }
 }
