@@ -10,8 +10,14 @@ description = "Disk Space Organizer — minimal macOS app for finding what fills
 workspace = true
 
 [dependencies]
-anyhow = "1.0.102"
 dirs = "6.0.0"
 disk-core = { path = "../disk-core" }
 eframe = "0.30.0"
 rfd = "0.17.2"
+
+# `cargo install cargo-bundle` then `cargo bundle --release` builds a .app.
+[package.metadata.bundle]
+name = "Disk Space Organizer"
+identifier = "com.diskspaceorganizer.app"
+short_description = "See what's filling your disk."
+category = "public.app-category.utilities"

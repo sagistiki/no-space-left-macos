@@ -294,6 +294,8 @@ impl eframe::App for OrganizerApp {
         let mut cancel_trash = false;
         let mut compare_with: Option<SnapshotMeta> = None;
         let mut exit_compare = false;
+        let mut pick_folder = false;
+        let mut open_fda = false;
 
         egui::TopBottomPanel::top("toolbar")
             .exact_height(54.0)
@@ -314,6 +316,10 @@ impl eframe::App for OrganizerApp {
                             .clicked()
                         {
                             scan_requested = true;
+                        }
+                        ui.add_space(8.0);
+                        if ui.button("Choose folder…").clicked() {
+                            pick_folder = true;
                         }
                         ui.add_space(8.0);
                         ui.menu_button("Snapshots ▾", |ui| {
@@ -353,6 +359,24 @@ impl eframe::App for OrganizerApp {
                 });
                 ui.add_space(2.0);
             });
+        }
+
+        if let ScanState::Done(outcome) = &self.state {
+            if !outcome.skipped.is_empty() {
+                let n = outcome.skipped.len();
+                egui::TopBottomPanel::top("fda_hint").show(ctx, |ui| {
+                    ui.add_space(3.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.label(format!("⚠ {n} item(s) couldn’t be read."));
+                        ui.weak("Grant Full Disk Access to scan everything.");
+                        if ui.button("Open Privacy Settings").clicked() {
+                            open_fda = true;
+                        }
+                    });
+                    ui.add_space(3.0);
+                });
+            }
         }
 
         if let Some(cs) = &self.compare {
@@ -553,6 +577,15 @@ impl eframe::App for OrganizerApp {
         }
         if exit_compare {
             self.compare = None;
+        }
+        if pick_folder {
+            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                self.root = dir;
+                self.start_scan(ctx);
+            }
+        }
+        if open_fda {
+            crate::actions::open_full_disk_access_settings();
         }
         if do_trash {
             if let Some(pending) = self.pending_trash.take() {
