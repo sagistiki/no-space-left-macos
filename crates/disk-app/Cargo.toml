@@ -4,7 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Disk Space Organizer — minimal macOS app for finding what fills your disk."
+description = "no space left — minimal macOS app for finding what fills your disk."
+
+[[bin]]
+name = "no-space-left"
+path = "src/main.rs"
 
 [lints]
 workspace = true
@@ -17,7 +21,7 @@ rfd = "0.17.2"
 
 # `cargo install cargo-bundle` then `cargo bundle --release` builds a .app.
 [package.metadata.bundle]
-name = "Disk Space Organizer"
-identifier = "com.diskspaceorganizer.app"
+name = "no space left"
+identifier = "com.nospaceleft.app"
 short_description = "See what's filling your disk."
 category = "public.app-category.utilities"

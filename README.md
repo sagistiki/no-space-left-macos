@@ -1,4 +1,4 @@
-# Disk Space Organizer
+# no space left
 
 A minimal, Apple-flavored macOS app, written in Rust, that shows **where your
 disk space went** — which folders and files are largest (as an interactive
@@ -42,7 +42,7 @@ cargo clippy --workspace
 
 ```sh
 cargo install cargo-bundle
-cargo bundle --release        # produces target/release/bundle/osx/Disk Space Organizer.app
+cargo bundle --release        # produces target/release/bundle/osx/no space left.app
 ```
 
 ## Full Disk Access
@@ -63,9 +63,6 @@ A Cargo workspace with a strict logic/UI split:
 - **`crates/disk-app`** — the egui/eframe UI: a worker-thread scan, the
   squarified `treemap` renderer, navigation, the detail popover, and snapshots
   compare.
-
-The full design lives in
-[`docs/superpowers/specs/2026-05-29-disk-space-organizer-design.md`](docs/superpowers/specs/2026-05-29-disk-space-organizer-design.md).
 
 ## Notes & limitations (v1)
 

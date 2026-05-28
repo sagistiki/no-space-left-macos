@@ -168,7 +168,7 @@ impl OrganizerApp {
 }
 
 fn snapshots_dir() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("DiskSpaceOrganizer").join("snapshots"))
+    dirs::data_dir().map(|d| d.join("no-space-left").join("snapshots"))
 }
 
 fn build_snapshot(root: &Path, outcome: &ScanOutcome) -> Snapshot {
@@ -303,7 +303,7 @@ impl eframe::App for OrganizerApp {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);
-                    ui.heading("Disk Space Organizer");
+                    ui.heading("no space left");
                     ui.add_space(4.0);
                     if !self.nav.is_empty() && ui.button("↑ Up").clicked() {
                         nav_to = Some(self.nav.len() - 1);

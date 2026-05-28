@@ -1,4 +1,4 @@
-//! `disk-core` — the engine behind Disk Space Organizer.
+//! `disk-core` — the engine behind no space left.
 //!
 //! Pure-Rust logic with **no UI dependencies**: filesystem scanning, snapshot
 //! persistence, diffing snapshots over time, and safe (Trash-based) deletion.
