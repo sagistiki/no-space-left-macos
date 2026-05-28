@@ -4,7 +4,9 @@
 //! treemap): it turns a list of weights and a rectangle into tiles with good
 //! aspect ratios. It has no egui-drawing dependencies and is unit-tested.
 
-use eframe::egui::{pos2, vec2, Rect};
+use crate::theme;
+use disk_core::model::{EntryKind, Node};
+use eframe::egui::{self, pos2, vec2, Align2, Color32, FontId, Rect, Sense, Stroke};
 
 /// One laid-out tile: which input it came from, and where it sits.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -124,10 +126,116 @@ fn layout_row(
     }
 }
 
+/// Cap on tiles drawn at once. Children are size-sorted, so this keeps the
+/// largest items; the long tail of tiny entries is folded away.
+const MAX_TILES: usize = 250;
+
+/// What the user did on the treemap this frame.
+#[derive(Default)]
+pub struct TreemapAction {
+    /// A child was single-clicked (index into `node.children`).
+    pub selected: Option<usize>,
+    /// A directory child was double-clicked — drill into it.
+    pub drill: Option<usize>,
+}
+
+/// Draw `node`'s children as a treemap filling the available space, and report
+/// the interaction. `selected` highlights one child.
+pub fn show(ui: &mut egui::Ui, node: &Node, selected: Option<usize>) -> TreemapAction {
+    let mut action = TreemapAction::default();
+    let area = ui.available_rect_before_wrap();
+    ui.allocate_rect(area, Sense::hover());
+
+    let count = node.children.len().min(MAX_TILES);
+    if count == 0 {
+        ui.painter().text(
+            area.center(),
+            Align2::CENTER_CENTER,
+            "Empty — nothing to show here",
+            FontId::proportional(14.0),
+            ui.visuals().weak_text_color(),
+        );
+        return action;
+    }
+
+    let painter = ui.painter_at(area);
+    let weights: Vec<f64> = node.children[..count].iter().map(|c| c.size as f64).collect();
+    let tiles = squarify(&weights, area);
+
+    for tile in &tiles {
+        let child = &node.children[tile.index];
+        let resp = ui.interact(tile.rect, ui.id().with(("tile", tile.index)), Sense::click());
+
+        let base = tile_color(tile.index);
+        let fill = if resp.hovered() {
+            base.linear_multiply(1.22)
+        } else {
+            base
+        };
+        let r = tile.rect.shrink(1.5);
+        painter.rect_filled(r, 5.0, fill);
+        if Some(tile.index) == selected {
+            painter.rect_stroke(r, 5.0, Stroke::new(2.5, theme::ACCENT));
+        }
+
+        // Labels only when the tile is roomy enough to read.
+        if r.width() > 56.0 && r.height() > 26.0 {
+            let tc = contrast_color(fill);
+            painter.text(
+                r.left_top() + vec2(8.0, 6.0),
+                Align2::LEFT_TOP,
+                &child.name,
+                FontId::proportional(12.5),
+                tc,
+            );
+            if r.height() > 46.0 {
+                painter.text(
+                    r.left_top() + vec2(8.0, 24.0),
+                    Align2::LEFT_TOP,
+                    crate::format::human_size(child.size),
+                    FontId::proportional(11.0),
+                    tc.gamma_multiply(0.85),
+                );
+            }
+        }
+
+        if resp.double_clicked() && child.kind == EntryKind::Dir {
+            action.drill = Some(tile.index);
+        } else if resp.clicked() {
+            action.selected = Some(tile.index);
+        }
+    }
+
+    action
+}
+
+/// A soft, Apple-ish palette cycled by tile position.
+fn tile_color(index: usize) -> Color32 {
+    const PALETTE: [Color32; 6] = [
+        Color32::from_rgb(10, 132, 255),
+        Color32::from_rgb(48, 209, 88),
+        Color32::from_rgb(255, 159, 10),
+        Color32::from_rgb(191, 90, 242),
+        Color32::from_rgb(255, 105, 97),
+        Color32::from_rgb(94, 200, 230),
+    ];
+    PALETTE[index % PALETTE.len()]
+}
+
+/// Pick black or white text for legibility over `bg`.
+fn contrast_color(bg: Color32) -> Color32 {
+    let [r, g, b, _] = bg.to_array();
+    let luma = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+    if luma > 140.0 {
+        Color32::from_rgb(20, 20, 20)
+    } else {
+        Color32::WHITE
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eframe::egui::{pos2, vec2};
 
     fn area(w: f32, h: f32) -> Rect {
         Rect::from_min_size(pos2(0.0, 0.0), vec2(w, h))

@@ -1,6 +1,7 @@
 //! Disk Space Organizer — macOS desktop app (egui / eframe).
 
 mod app;
+mod format;
 mod theme;
 mod treemap;
 
