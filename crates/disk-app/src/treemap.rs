@@ -140,8 +140,15 @@ pub struct TreemapAction {
 }
 
 /// Draw `node`'s children as a treemap filling the available space, and report
-/// the interaction. `selected` highlights one child.
-pub fn show(ui: &mut egui::Ui, node: &Node, selected: Option<usize>) -> TreemapAction {
+/// the interaction. `selected` highlights one child. When `tile_colors` is
+/// `Some`, tile `i` uses `tile_colors[i]` (used by compare mode); otherwise a
+/// default palette is used.
+pub fn show(
+    ui: &mut egui::Ui,
+    node: &Node,
+    selected: Option<usize>,
+    tile_colors: Option<&[Color32]>,
+) -> TreemapAction {
     let mut action = TreemapAction::default();
     let area = ui.available_rect_before_wrap();
     ui.allocate_rect(area, Sense::hover());
@@ -166,7 +173,13 @@ pub fn show(ui: &mut egui::Ui, node: &Node, selected: Option<usize>) -> TreemapA
         let child = &node.children[tile.index];
         let resp = ui.interact(tile.rect, ui.id().with(("tile", tile.index)), Sense::click());
 
-        let base = tile_color(tile.index);
+        let base = match tile_colors {
+            Some(colors) => colors
+                .get(tile.index)
+                .copied()
+                .unwrap_or_else(|| tile_color(tile.index)),
+            None => tile_color(tile.index),
+        };
         let fill = if resp.hovered() {
             base.linear_multiply(1.22)
         } else {

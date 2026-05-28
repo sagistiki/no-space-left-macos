@@ -52,6 +52,11 @@ impl Node {
             }
         }
     }
+
+    /// Total number of nodes in this subtree, including this node.
+    pub fn total_entries(&self) -> u64 {
+        1 + self.children.iter().map(Node::total_entries).sum::<u64>()
+    }
 }
 
 #[cfg(test)]
@@ -111,5 +116,20 @@ mod tests {
         let mut root = dir("root", vec![file("a", 10)]);
         assert_eq!(root.remove_descendant(&[], 99), None);
         assert_eq!(root.size, 10, "nothing changed");
+    }
+
+    #[test]
+    fn total_entries_counts_all_nodes_including_root() {
+        let root = dir("root", vec![file("a", 1), file("b", 2)]);
+        assert_eq!(root.total_entries(), 3);
+    }
+
+    #[test]
+    fn total_entries_counts_nested_subtrees() {
+        let root = dir(
+            "root",
+            vec![file("a", 1), dir("sub", vec![file("b", 2), file("c", 3)])],
+        );
+        assert_eq!(root.total_entries(), 5);
     }
 }

@@ -1,13 +1,18 @@
 //! The egui application: window state, the background scan worker, the main
-//! treemap view with drill-down, and safe deletion (Trash) with confirmation.
-//! Scanning runs on a worker thread so the UI never blocks.
+//! treemap view with drill-down, safe deletion (Trash), and snapshot
+//! comparison over time. Scanning runs on a worker thread so the UI never
+//! blocks; each completed scan is also saved as a snapshot.
 
+use disk_core::diff::{self, Change};
 use disk_core::model::Node;
 use disk_core::scanner::{self, ScanOptions, ScanOutcome};
-use eframe::egui::{self, Align2};
+use disk_core::snapshot::{self, Snapshot, SnapshotMeta};
+use eframe::egui::{self, Align2, Color32};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Where the current scan stands.
 enum ScanState {
@@ -26,25 +31,34 @@ struct PendingTrash {
     name: String,
 }
 
+/// An active comparison against an earlier snapshot.
+struct CompareState {
+    label: String,
+    /// Change per path, relative to the scan root (vanished entries excluded).
+    changes: HashMap<PathBuf, Change>,
+    total_added: u64,
+    total_removed: u64,
+    /// Paths present in the snapshot but gone now (relative path, old size).
+    vanished: Vec<(PathBuf, u64)>,
+}
+
 pub struct OrganizerApp {
     root: PathBuf,
     state: ScanState,
     rx: Option<Receiver<Result<ScanOutcome, String>>>,
-    /// Drill path from the scan root: successive child indices.
     nav: Vec<usize>,
-    /// Selected child index within the current node.
     selected: Option<usize>,
-    /// A trash action awaiting confirmation.
     pending_trash: Option<PendingTrash>,
-    /// A transient message (text, expiry time in seconds).
     notice: Option<(String, f64)>,
+    snapshots: Vec<SnapshotMeta>,
+    compare: Option<CompareState>,
 }
 
 impl OrganizerApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         crate::theme::apply(&cc.egui_ctx);
         let root = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-        Self {
+        let mut app = Self {
             root,
             state: ScanState::Idle,
             rx: None,
@@ -52,12 +66,17 @@ impl OrganizerApp {
             selected: None,
             pending_trash: None,
             notice: None,
-        }
+            snapshots: Vec::new(),
+            compare: None,
+        };
+        app.refresh_snapshots();
+        app
     }
 
     fn start_scan(&mut self, ctx: &egui::Context) {
         self.nav.clear();
         self.selected = None;
+        self.compare = None;
         let root = self.root.clone();
         let (tx, rx) = channel();
         self.rx = Some(rx);
@@ -66,6 +85,12 @@ impl OrganizerApp {
         let ctx = ctx.clone();
         thread::spawn(move || {
             let result = scanner::scan(&root, &ScanOptions::default()).map_err(|e| e.to_string());
+            // Best-effort: persist this scan as a snapshot for later comparison.
+            if let Ok(outcome) = &result {
+                if let Some(dir) = snapshots_dir() {
+                    let _ = snapshot::save(&build_snapshot(&root, outcome), &dir);
+                }
+            }
             let _ = tx.send(result);
             ctx.request_repaint();
         });
@@ -79,6 +104,16 @@ impl OrganizerApp {
                     Err(e) => ScanState::Error(e),
                 };
                 self.rx = None;
+                self.refresh_snapshots();
+            }
+        }
+    }
+
+    fn refresh_snapshots(&mut self) {
+        if let Some(dir) = snapshots_dir() {
+            if let Ok(mut metas) = snapshot::list(&dir) {
+                metas.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                self.snapshots = metas;
             }
         }
     }
@@ -87,6 +122,72 @@ impl OrganizerApp {
         let now = ctx.input(|i| i.time);
         self.notice = Some((text, now + 4.0));
         ctx.request_repaint();
+    }
+
+    fn start_compare(&mut self, ctx: &egui::Context, meta: &SnapshotMeta) {
+        let Some(dir) = snapshots_dir() else { return };
+        let old = match snapshot::load(&dir.join(format!("{}.snap", meta.id))) {
+            Ok(s) => s,
+            Err(e) => {
+                self.set_notice(ctx, format!("Couldn’t load snapshot: {e}"));
+                return;
+            }
+        };
+
+        let built = if let ScanState::Done(outcome) = &self.state {
+            let result = diff::diff(&old.root, &outcome.root, 0);
+            let mut changes = HashMap::new();
+            let mut vanished = Vec::new();
+            for d in &result.deltas {
+                if d.change == Change::Vanished {
+                    vanished.push((d.path.clone(), d.old_size));
+                } else {
+                    changes.insert(d.path.clone(), d.change);
+                }
+            }
+            Some(CompareState {
+                label: relative_time(meta.created_at),
+                changes,
+                total_added: result.total_added,
+                total_removed: result.total_removed,
+                vanished,
+            })
+        } else {
+            None
+        };
+
+        match built {
+            Some(cs) => {
+                let label = cs.label.clone();
+                self.compare = Some(cs);
+                self.set_notice(ctx, format!("Comparing with snapshot from {label}"));
+            }
+            None => self.set_notice(ctx, "Scan first, then compare.".to_string()),
+        }
+    }
+}
+
+fn snapshots_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("DiskSpaceOrganizer").join("snapshots"))
+}
+
+fn build_snapshot(root: &Path, outcome: &ScanOutcome) -> Snapshot {
+    let created_at = SystemTime::now();
+    let id = created_at
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+        .to_string();
+    Snapshot {
+        meta: SnapshotMeta {
+            id,
+            created_at,
+            roots: vec![root.to_path_buf()],
+            total_size: outcome.root.size,
+            entry_count: outcome.root.total_entries(),
+            skipped_count: outcome.skipped.len() as u64,
+        },
+        root: outcome.root.clone(),
     }
 }
 
@@ -121,17 +222,55 @@ fn breadcrumb_names(outcome: &ScanOutcome, nav: &[usize]) -> Vec<String> {
 /// Absolute filesystem path of the currently-viewed node.
 fn current_path(root: &Path, outcome: &ScanOutcome, nav: &[usize]) -> PathBuf {
     let mut path = root.to_path_buf();
+    walk_names(outcome, nav, |name| path.push(name));
+    path
+}
+
+/// Path of the current node relative to the scan root (matches diff keys).
+fn current_rel_path(outcome: &ScanOutcome, nav: &[usize]) -> PathBuf {
+    let mut path = PathBuf::new();
+    walk_names(outcome, nav, |name| path.push(name));
+    path
+}
+
+fn walk_names(outcome: &ScanOutcome, nav: &[usize], mut push: impl FnMut(&str)) {
     let mut node = &outcome.root;
     for &i in nav {
         match node.children.get(i) {
             Some(child) => {
-                path.push(&child.name);
+                push(&child.name);
                 node = child;
             }
             None => break,
         }
     }
-    path
+}
+
+fn compare_color(change: Option<Change>) -> Color32 {
+    match change {
+        Some(Change::New) => Color32::from_rgb(48, 209, 88),
+        Some(Change::Grew) => Color32::from_rgb(255, 159, 10),
+        Some(Change::Shrank) => Color32::from_rgb(94, 200, 230),
+        _ => Color32::from_gray(150),
+    }
+}
+
+fn relative_time(created: SystemTime) -> String {
+    match SystemTime::now().duration_since(created) {
+        Ok(d) => {
+            let s = d.as_secs();
+            if s < 60 {
+                "just now".to_string()
+            } else if s < 3600 {
+                format!("{} min ago", s / 60)
+            } else if s < 86_400 {
+                format!("{} h ago", s / 3600)
+            } else {
+                format!("{} d ago", s / 86_400)
+            }
+        }
+        Err(_) => "the future".to_string(),
+    }
 }
 
 impl eframe::App for OrganizerApp {
@@ -145,7 +284,6 @@ impl eframe::App for OrganizerApp {
             }
         }
 
-        // Intents gathered this frame, applied after the UI is laid out.
         let mut scan_requested = false;
         let mut nav_to: Option<usize> = None;
         let mut drill: Option<usize> = None;
@@ -154,6 +292,8 @@ impl eframe::App for OrganizerApp {
         let mut set_pending: Option<PendingTrash> = None;
         let mut do_trash = false;
         let mut cancel_trash = false;
+        let mut compare_with: Option<SnapshotMeta> = None;
+        let mut exit_compare = false;
 
         egui::TopBottomPanel::top("toolbar")
             .exact_height(54.0)
@@ -176,7 +316,22 @@ impl eframe::App for OrganizerApp {
                             scan_requested = true;
                         }
                         ui.add_space(8.0);
-                        ui.weak(self.root.display().to_string());
+                        ui.menu_button("Snapshots ▾", |ui| {
+                            if self.snapshots.is_empty() {
+                                ui.label("No snapshots yet");
+                            }
+                            for meta in &self.snapshots {
+                                let label = format!(
+                                    "{} · {}",
+                                    relative_time(meta.created_at),
+                                    crate::format::human_size(meta.total_size)
+                                );
+                                if ui.button(label).clicked() {
+                                    compare_with = Some(meta.clone());
+                                    ui.close_menu();
+                                }
+                            }
+                        });
                     });
                 });
             });
@@ -197,6 +352,46 @@ impl eframe::App for OrganizerApp {
                     }
                 });
                 ui.add_space(2.0);
+            });
+        }
+
+        if let Some(cs) = &self.compare {
+            egui::TopBottomPanel::bottom("compare_bar").show(ctx, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.strong(format!("Comparing with snapshot from {}", cs.label));
+                    ui.colored_label(
+                        Color32::from_rgb(48, 209, 88),
+                        format!("+{}", crate::format::human_size(cs.total_added)),
+                    );
+                    ui.colored_label(
+                        Color32::from_rgb(94, 200, 230),
+                        format!("−{}", crate::format::human_size(cs.total_removed)),
+                    );
+                    if !cs.vanished.is_empty() {
+                        ui.weak(format!("· {} vanished", cs.vanished.len()));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(12.0);
+                        if ui.button("Exit compare").clicked() {
+                            exit_compare = true;
+                        }
+                    });
+                });
+                if !cs.vanished.is_empty() {
+                    ui.collapsing("Vanished items", |ui| {
+                        egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
+                            for (path, size) in cs.vanished.iter().take(50) {
+                                ui.horizontal(|ui| {
+                                    ui.weak(crate::format::human_size(*size));
+                                    ui.label(path.display().to_string());
+                                });
+                            }
+                        });
+                    });
+                }
+                ui.add_space(4.0);
             });
         }
 
@@ -222,13 +417,20 @@ impl eframe::App for OrganizerApp {
             }
             ScanState::Done(outcome) => {
                 let current = current_node(outcome, &self.nav);
-                let action = crate::treemap::show(ui, current, selected);
+                let colors: Option<Vec<Color32>> = self.compare.as_ref().map(|cs| {
+                    let prefix = current_rel_path(outcome, &self.nav);
+                    current
+                        .children
+                        .iter()
+                        .map(|child| compare_color(cs.changes.get(&prefix.join(&child.name)).copied()))
+                        .collect()
+                });
+                let action = crate::treemap::show(ui, current, selected, colors.as_deref());
                 drill = action.drill;
                 select = action.selected;
             }
         });
 
-        // Floating detail + actions popover for the selected item.
         if let ScanState::Done(outcome) = &self.state {
             if let Some(sel) = self.selected {
                 let current = current_node(outcome, &self.nav);
@@ -241,7 +443,7 @@ impl eframe::App for OrganizerApp {
                     let nav_clone = self.nav.clone();
 
                     egui::Area::new(egui::Id::new("detail_popover"))
-                        .anchor(Align2::CENTER_BOTTOM, egui::vec2(0.0, -22.0))
+                        .anchor(Align2::CENTER_BOTTOM, egui::vec2(0.0, -64.0))
                         .show(ctx, |ui| {
                             egui::Frame::popup(ui.style()).show(ui, |ui| {
                                 ui.set_max_width(580.0);
@@ -285,7 +487,6 @@ impl eframe::App for OrganizerApp {
             }
         }
 
-        // Confirmation dialog for a pending trash.
         if let Some(pending) = self.pending_trash.clone() {
             egui::Window::new("Move to Trash?")
                 .collapsible(false)
@@ -312,7 +513,6 @@ impl eframe::App for OrganizerApp {
                 });
         }
 
-        // Transient notice toast.
         if let Some((text, _)) = &self.notice {
             let text = text.clone();
             egui::Area::new(egui::Id::new("notice"))
@@ -325,7 +525,6 @@ impl eframe::App for OrganizerApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
 
-        // Apply intents.
         if scan_requested {
             self.start_scan(ctx);
         }
@@ -348,6 +547,12 @@ impl eframe::App for OrganizerApp {
         }
         if cancel_trash {
             self.pending_trash = None;
+        }
+        if let Some(meta) = compare_with {
+            self.start_compare(ctx, &meta);
+        }
+        if exit_compare {
+            self.compare = None;
         }
         if do_trash {
             if let Some(pending) = self.pending_trash.take() {
