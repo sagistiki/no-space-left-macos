@@ -6,5 +6,6 @@
 //! The UI crate (`disk-app`) is a thin consumer of the types and functions
 //! exposed here, which keeps all logic independently unit-testable.
 
+pub mod delete;
 pub mod model;
 pub mod scanner;
