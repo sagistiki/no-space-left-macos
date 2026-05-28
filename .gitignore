@@ -1,0 +1,8 @@
+# Rust build artifacts
+/target
+
+# Visual companion scratch (brainstorming)
+.superpowers/
+
+# macOS
+.DS_Store
