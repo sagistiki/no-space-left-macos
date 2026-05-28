@@ -2,6 +2,7 @@
 
 mod app;
 mod theme;
+mod treemap;
 
 fn main() -> eframe::Result {
     let native_options = eframe::NativeOptions {
