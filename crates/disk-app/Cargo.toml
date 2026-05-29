@@ -25,3 +25,4 @@ name = "no space left"
 identifier = "com.nospaceleft.app"
 short_description = "See what's filling your disk."
 category = "public.app-category.utilities"
+icon = ["../../assets/icon.icns"]

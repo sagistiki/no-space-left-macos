@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" width="1024" height="1024">
+  <defs>
+    <clipPath id="sq"><rect width="120" height="120" rx="27"/></clipPath>
+    <clipPath id="lens"><circle cx="50" cy="50" r="25"/></clipPath>
+  </defs>
+  <g transform="translate(12,12)">
+  <g clip-path="url(#sq)">
+    <rect width="120" height="120" fill="#FFFFFF"/>
+    <!-- faint treemap behind -->
+    <g opacity="0.5">
+      <rect x="10" y="10" width="48" height="44" rx="6" fill="#AEC8F0"/>
+      <rect x="62" y="10" width="48" height="28" rx="6" fill="#BFE3D0"/>
+      <rect x="62" y="42" width="48" height="68" rx="6" fill="#FBE7A8"/>
+      <rect x="10" y="58" width="48" height="52" rx="6" fill="#D9C7F0"/>
+    </g>
+    <!-- magnifier handle -->
+    <line x1="70" y1="70" x2="93" y2="93" stroke="#4F90E8" stroke-width="11" stroke-linecap="round"/>
+    <!-- lens -->
+    <circle cx="50" cy="50" r="28" fill="#FFFFFF" stroke="#4F90E8" stroke-width="6"/>
+    <g clip-path="url(#lens)">
+      <rect x="22" y="22" width="34" height="28" rx="5" fill="#AEC8F0"/>
+      <rect x="58" y="22" width="22" height="28" rx="5" fill="#BFE3D0"/>
+      <rect x="22" y="52" width="58" height="26" rx="5" fill="#FFD9C2"/>
+    </g>
+  </g>
+  </g>
+</svg>
